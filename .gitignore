@@ -1,0 +1,28 @@
+# Ambiente virtual
+venv/
+env/
+.env
+
+# Cache e arquivos temporários
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+.streamlit/
+
+# Diretórios de dados e índices
+data/
+vector_store/
+
+# Arquivos do sistema
+.DS_Store
+Thumbs.db
+
+# IDEs e editores
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
