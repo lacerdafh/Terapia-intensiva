@@ -2,27 +2,33 @@
 venv/
 env/
 .env
+pyvenv.cfg
 
 # Cache e arquivos temporários
 __pycache__/
-*.py[cod]
+*.pyc
+.cache/
 .pytest_cache/
-.coverage
-.streamlit/
 
-# Diretórios de dados e índices
+# Diretórios de dados
+~/chatbot_documents/
 data/
 vector_store/
+uploaded_files/
 
-# Arquivos do sistema
-.DS_Store
-Thumbs.db
+# Imagens temporárias ou screenshots
+screenshots/
+temp/
+*.screenshot.png
 
-# IDEs e editores
+# Permitir imagens da aplicação
+!static/images/*
+
+# IDE e editores
 .vscode/
 .idea/
 *.swp
-*.swo
 
-# Logs
-*.log
+# Sistema
+.DS_Store
+Thumbs.db

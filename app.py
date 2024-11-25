@@ -9,6 +9,7 @@ from langchain.embeddings import HuggingFaceEmbeddings
 from PyPDF2 import PdfReader
 from dotenv import load_dotenv
 from langchain_groq import ChatGroq
+from pathlib import Path
 
 
 # Suprimir avisos do TensorFlow
@@ -156,7 +157,8 @@ def main():
     # Sidebar para controles e informações
        
     with st.sidebar:
-        st.image(".\Captura de tela 2024-11-25 182339.png", caption="Dr. Kinho", use_column_width=True)
+        image_path = Path(__file__).parent / "static" / "images" / "app_header.png"
+        st.image(str(image_path), caption="Dr. Kinho", use_column_width=True)
 
         # Gerenciamento de arquivos existentes
         st.header("Documentos Disponíveis")
