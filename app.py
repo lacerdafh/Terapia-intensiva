@@ -16,6 +16,7 @@ import tomllib
 import shutil
 import sys
 
+
 # Suprimir avisos de depreciação
 import warnings
 warnings.filterwarnings('ignore')
@@ -75,8 +76,6 @@ def get_app_directories() -> tuple[str, str, str]:
     return base_dir, docs_dir, index_dir
 
 # Configurar SQLite
-__import__('pysqlite3')
-sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 
 def load_documents(folder_path: str) -> list[Document]:
     """Carrega documentos TXT e PDF de uma pasta."""
