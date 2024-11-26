@@ -69,7 +69,7 @@ def load_documents(folder_path: str) -> list[Document]:
                 loader = TextLoader(file_path)
                 documents.extend(loader.load())
             elif file_name.lower().endswith(".pdf"):
-                pdf_reader = PdfReader(file_path)
+                pdf_reader = PyPDFLoader(file_path)
                 text = "\n".join(page.extract_text() for page in pdf_reader.pages)
                 documents.append(Document(page_content=text, metadata={"source": file_path}))
         except Exception as e:
