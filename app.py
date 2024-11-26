@@ -10,12 +10,17 @@ from langchain_groq import ChatGroq
 from langchain_community.document_loaders import PyPDFLoader
 from dotenv import load_dotenv
 from pathlib import Path
+import tomllib
+
 
 
 # Suprimir avisos do TensorFlow
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
-import os
+
+
+with open("config.toml", "rb") as f:
+    config = tomllib.load(f)
 os.environ["GROQ_API_KEY"] = config["api_keys"]["groq_api_key"]
 os.environ["HF_API_KEY"] = config["api_keys"]["hf_api_key"]
 
