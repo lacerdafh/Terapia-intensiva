@@ -15,7 +15,9 @@ from pathlib import Path
 import tomllib
 import shutil
 import sys
-
+from snowflake.connector import connect
+from langchain.vectorstores import SnowflakeVectorStore
+from snowflake.connector import connect
 
 # Suprimir avisos de depreciação
 import warnings
@@ -35,7 +37,14 @@ os.environ["HF_API_KEY"] = config["api_keys"]["hf_api_key"]
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 # Carregar variáveis de ambiente
 load_dotenv()
-
+snowflake_config = {
+    "account": st.secrets["snowflake"]["account"],
+    "user": st.secrets["snowflake"]["user"],
+    "password": st.secrets["snowflake"]["password"],
+    "warehouse": st.secrets["snowflake"]["warehouse"],
+    "database": st.secrets["snowflake"]["database"],
+    "schema": st.secrets["snowflake"]["schema"]
+}
 # Verificar a chave API
 if not os.getenv("GROQ_API_KEY"):
     raise ValueError("GROQ_API_KEY não encontrada no arquivo .env")
@@ -123,11 +132,12 @@ def create_or_load_vector_store(_embeddings, docs_dir: str, index_dir: str):
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
         texts = text_splitter.split_documents(documents)
 
-        vector_store = Chroma.from_documents(
-            documents=texts,
-            embedding=_embeddings,
-            persist_directory=persist_directory
-        )
+        vector_store = SnowflakeVectorStore(
+          connection=init_snowflake_connection(),
+             embeddings=embeddings,
+             table_name="EMBEDDINGS_TABLE",
+               dimension=1536  # dimensão para OpenAI embeddings
+                 )
 
         vector_store.persist()
         return vector_store
