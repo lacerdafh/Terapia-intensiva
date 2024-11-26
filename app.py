@@ -49,7 +49,7 @@ def get_embeddings():
             raise ValueError("A chave da API do Hugging Face (HF_API_KEY) não foi encontrada no .env")
 
         return HuggingFaceInferenceAPIEmbeddings(
-            api_key=SecretStr(hf_api_key),
+            api_key=hf_api_key,  # Removido SecretStr
             model_name="sentence-transformers/all-MiniLM-L6-v2",
         )
     except Exception as e:
