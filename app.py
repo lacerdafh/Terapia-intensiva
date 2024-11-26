@@ -169,13 +169,93 @@ def main():
             accept_multiple_files=True
         )
 
-        if uploaded_files:
+        def upload_files(uploaded_files, docs_dir: str) -> list[str]:
+    """Salva múltiplos arquivos enviados no diretório de documentos."""
+    saved_files = []
+    
+    # Garantir que o diretório existe
+    if not os.path.exists(docs_dir):
+        os.makedirs(docs_dir, exist_ok=True)
+        st.info(f"Diretório criado: {docs_dir}")
+    
+    for uploaded_file in uploaded_files:
+        try:
+            # Verificar se o arquivo está vazio
+            if uploaded_file is None:
+                st.warning("Arquivo vazio detectado. Pulando...")
+                continue
+                
+            # Criar o caminho completo do arquivo
+            file_path = os.path.join(docs_dir, uploaded_file.name)
+            
+            # Mostrar informações do arquivo
+            st.info(f"Processando arquivo: {uploaded_file.name}")
+            st.info(f"Tamanho: {uploaded_file.size} bytes")
+            st.info(f"Tipo: {uploaded_file.type}")
+            
+            # Ler o conteúdo do arquivo em chunks para arquivos grandes
+            with open(file_path, "wb") as f:
+                file_content = uploaded_file.getbuffer()
+                f.write(file_content)
+                
+            # Verificar se o arquivo foi salvo corretamente
+            if os.path.exists(file_path):
+                saved_size = os.path.getsize(file_path)
+                if saved_size > 0:
+                    saved_files.append(uploaded_file.name)
+                    st.success(f"Arquivo salvo com sucesso: {file_path} ({saved_size} bytes)")
+                else:
+                    st.error(f"Arquivo salvo está vazio: {file_path}")
+            else:
+                st.error(f"Falha ao salvar arquivo: {file_path}")
+                
+        except Exception as e:
+            st.error(f"Erro ao salvar arquivo {uploaded_file.name}: {str(e)}")
+            import traceback
+            st.error(f"Detalhes do erro: {traceback.format_exc()}")
+            
+    return saved_files
+
+# No main(), ajuste a parte do upload assim:
+with st.sidebar:
+    # ... (código anterior)
+    
+    # Upload de documentos com informações de debug
+    st.write("### Upload de Documentos")
+    st.write("Diretório de destino:", docs_dir)
+    
+    uploaded_files = st.file_uploader(
+        "Envie documentos (TXT ou PDF)",
+        type=["txt", "pdf"],
+        accept_multiple_files=True,
+        key="file_uploader"  # Adicionada key única
+    )
+
+    if uploaded_files:
+        st.write(f"Arquivos selecionados: {len(uploaded_files)}")
+        for up_file in uploaded_files:
+            st.write(f"- {up_file.name} ({up_file.size} bytes)")
+            
+        if st.button("Confirmar Upload"):
             with st.spinner("Salvando arquivos..."):
                 saved_files = upload_files(uploaded_files, docs_dir)
                 if saved_files:
                     st.success(f"Arquivos salvos: {', '.join(saved_files)}")
+                    # Limpar cache e recarregar vetores
                     st.cache_resource.clear()
+                    if os.path.exists(os.path.join(index_dir, "faiss_index")):
+                        shutil.rmtree(os.path.join(index_dir, "faiss_index"))
+                    if os.path.exists(os.path.join(index_dir, "faiss_store.pkl")):
+                        os.remove(os.path.join(index_dir, "faiss_store.pkl"))
+                    # Recriar o vetor store
+                    st.session_state.vector_store = create_or_load_vector_store(
+                        _embeddings=embeddings,
+                        docs_dir=docs_dir,
+                        index_dir=index_dir
+                    )
                     st.rerun()
+                else:
+                    st.error("Nenhum arquivo foi salvo com sucesso.")
 
         # Listar documentos existentes
         st.header("Documentos Disponíveis")
