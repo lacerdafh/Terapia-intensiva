@@ -1,5 +1,6 @@
 streamlit==1.40.2
 langchain==0.3.8
+langchain-chroma==0.1.4
 langchain-community==0.3.8
 langchain-core==0.3.21
 langchain-groq==0.2.1
