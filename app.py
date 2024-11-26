@@ -1,9 +1,9 @@
 import os
 import streamlit as st
-from langchain_chroma import Chroma
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.schema import Document
 from langchain.embeddings.huggingface import HuggingFaceInferenceAPIEmbeddings
+from langchain_community.vectorstores import FAISS
 from pydantic import SecretStr
 from langchain_groq import ChatGroq
 from PyPDF2 import PdfReader
@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 from pathlib import Path
 import tomllib
 import warnings
+import pickle
 import shutil
 
 # Suprimir avisos
@@ -57,7 +58,6 @@ def get_embeddings():
 
 def get_user_directories() -> tuple[str, str, str]:
     """Configura os diretórios da aplicação na pasta do usuário."""
-    # Detectar o sistema operacional e definir o caminho base apropriado
     if os.name == 'nt':  # Windows
         base_dir = os.path.expanduser("~\\Documents\\ChatbotDrKinho")
     else:  # Linux/Mac
@@ -98,20 +98,21 @@ def load_documents(folder_path: str) -> list[Document]:
 
 @st.cache_resource
 def create_or_load_vector_store(_embeddings, docs_dir: str, index_dir: str):
-    """Cria ou carrega o índice Chroma no diretório local."""
-    persist_directory = os.path.join(index_dir, "chroma_db")
+    """Cria ou carrega o índice FAISS no diretório local."""
+    index_path = os.path.join(index_dir, "faiss_index")
+    pickle_path = os.path.join(index_dir, "faiss_store.pkl")
 
     try:
         # Tentar carregar índice existente
-        if os.path.exists(persist_directory) and os.listdir(persist_directory):
-            st.info("Carregando índice Chroma existente...")
-            return Chroma(
-                persist_directory=persist_directory,
-                embedding_function=_embeddings
-            )
+        if os.path.exists(index_path) and os.path.exists(pickle_path):
+            st.info("Carregando índice FAISS existente...")
+            vector_store = FAISS.load_local(index_path, _embeddings)
+            with open(pickle_path, 'rb') as f:
+                vector_store.__dict__.update(pickle.load(f))
+            return vector_store
 
         # Criar novo índice
-        st.info("Criando novo índice Chroma...")
+        st.info("Criando novo índice FAISS...")
         documents = load_documents(docs_dir)
         if not documents:
             raise RuntimeError("Nenhum documento válido encontrado.")
@@ -119,18 +120,18 @@ def create_or_load_vector_store(_embeddings, docs_dir: str, index_dir: str):
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
         texts = text_splitter.split_documents(documents)
 
-        # Criar e persistir vetor store localmente
-        vector_store = Chroma.from_documents(
-            documents=texts,
-            embedding=_embeddings,
-            persist_directory=persist_directory
-        )
+        # Criar vetor store
+        vector_store = FAISS.from_documents(texts, _embeddings)
         
-        vector_store.persist()
+        # Salvar índice e metadados
+        vector_store.save_local(index_path)
+        with open(pickle_path, 'wb') as f:
+            pickle.dump(vector_store.__dict__, f)
+        
         return vector_store
 
     except Exception as e:
-        raise RuntimeError(f"Erro ao criar/carregar o índice Chroma: {str(e)}")
+        raise RuntimeError(f"Erro ao criar/carregar o índice FAISS: {str(e)}")
 
 def upload_files(uploaded_files, docs_dir: str) -> list[str]:
     """Salva múltiplos arquivos enviados no diretório de documentos."""
@@ -237,7 +238,7 @@ def main():
         st.write(f"📄 Documentos: {docs_dir}")
         st.write(f"📊 Índices: {index_dir}")
 
-    # Configurar banco de dados (Chroma)
+    # Configurar banco de dados (FAISS)
     try:
         if 'vector_store' not in st.session_state:
             with st.spinner("Configurando banco de dados..."):
