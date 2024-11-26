@@ -133,43 +133,9 @@ def create_or_load_vector_store(_embeddings, docs_dir: str, index_dir: str):
     except Exception as e:
         raise RuntimeError(f"Erro ao criar/carregar o índice FAISS: {str(e)}")
 
+# [Todas as importações e configurações iniciais permanecem iguais até a função upload_files]
+
 def upload_files(uploaded_files, docs_dir: str) -> list[str]:
-    """Salva múltiplos arquivos enviados no diretório de documentos."""
-    saved_files = []
-    for uploaded_file in uploaded_files:
-        try:
-            file_path = os.path.join(docs_dir, uploaded_file.name)
-            with open(file_path, "wb") as f:
-                f.write(uploaded_file.getbuffer())
-            saved_files.append(uploaded_file.name)
-        except Exception as e:
-            st.error(f"Erro ao salvar arquivo {uploaded_file.name}: {e}")
-    return saved_files
-
-def main():
-    st.title("Chatbot com Dr. Kinho")
-
-    # Configurar diretórios do usuário
-    base_dir, docs_dir, index_dir = get_user_directories()
-
-    # Obter embeddings
-    embeddings = get_embeddings()
-
-    with st.sidebar:
-        image_path = Path(__file__).parent / "static" / "images" / "app_header.png"
-        if image_path.exists():
-            st.image(str(image_path), caption="Dr. Kinho", use_container_width=True)
-        
-        st.header("Gerenciamento de Documentos")
-
-        # Upload de documentos
-        uploaded_files = st.file_uploader(
-            "Envie documentos (TXT ou PDF)",
-            type=["txt", "pdf"],
-            accept_multiple_files=True
-        )
-
-        def upload_files(uploaded_files, docs_dir: str) -> list[str]:
     """Salva múltiplos arquivos enviados no diretório de documentos."""
     saved_files = []
     
@@ -216,46 +182,59 @@ def main():
             
     return saved_files
 
-# No main(), ajuste a parte do upload assim:
-with st.sidebar:
-    # ... (código anterior)
-    
-    # Upload de documentos com informações de debug
-    st.write("### Upload de Documentos")
-    st.write("Diretório de destino:", docs_dir)
-    
-    uploaded_files = st.file_uploader(
-        "Envie documentos (TXT ou PDF)",
-        type=["txt", "pdf"],
-        accept_multiple_files=True,
-        key="file_uploader"  # Adicionada key única
-    )
+def main():
+    st.title("Chatbot com Dr. Kinho")
 
-    if uploaded_files:
-        st.write(f"Arquivos selecionados: {len(uploaded_files)}")
-        for up_file in uploaded_files:
-            st.write(f"- {up_file.name} ({up_file.size} bytes)")
-            
-        if st.button("Confirmar Upload"):
-            with st.spinner("Salvando arquivos..."):
-                saved_files = upload_files(uploaded_files, docs_dir)
-                if saved_files:
-                    st.success(f"Arquivos salvos: {', '.join(saved_files)}")
-                    # Limpar cache e recarregar vetores
-                    st.cache_resource.clear()
-                    if os.path.exists(os.path.join(index_dir, "faiss_index")):
-                        shutil.rmtree(os.path.join(index_dir, "faiss_index"))
-                    if os.path.exists(os.path.join(index_dir, "faiss_store.pkl")):
-                        os.remove(os.path.join(index_dir, "faiss_store.pkl"))
-                    # Recriar o vetor store
-                    st.session_state.vector_store = create_or_load_vector_store(
-                        _embeddings=embeddings,
-                        docs_dir=docs_dir,
-                        index_dir=index_dir
-                    )
-                    st.rerun()
-                else:
-                    st.error("Nenhum arquivo foi salvo com sucesso.")
+    # Configurar diretórios do usuário
+    base_dir, docs_dir, index_dir = get_user_directories()
+
+    # Obter embeddings
+    embeddings = get_embeddings()
+
+    # Sidebar
+    with st.sidebar:
+        image_path = Path(__file__).parent / "static" / "images" / "app_header.png"
+        if image_path.exists():
+            st.image(str(image_path), caption="Dr. Kinho", use_container_width=True)
+        
+        st.header("Gerenciamento de Documentos")
+
+        # Upload de documentos com informações de debug
+        st.write("### Upload de Documentos")
+        st.write("Diretório de destino:", docs_dir)
+        
+        uploaded_files = st.file_uploader(
+            "Envie documentos (TXT ou PDF)",
+            type=["txt", "pdf"],
+            accept_multiple_files=True,
+            key="file_uploader"
+        )
+
+        if uploaded_files:
+            st.write(f"Arquivos selecionados: {len(uploaded_files)}")
+            for up_file in uploaded_files:
+                st.write(f"- {up_file.name} ({up_file.size} bytes)")
+                
+            if st.button("Confirmar Upload"):
+                with st.spinner("Salvando arquivos..."):
+                    saved_files = upload_files(uploaded_files, docs_dir)
+                    if saved_files:
+                        st.success(f"Arquivos salvos: {', '.join(saved_files)}")
+                        # Limpar cache e recarregar vetores
+                        st.cache_resource.clear()
+                        if os.path.exists(os.path.join(index_dir, "faiss_index")):
+                            shutil.rmtree(os.path.join(index_dir, "faiss_index"))
+                        if os.path.exists(os.path.join(index_dir, "faiss_store.pkl")):
+                            os.remove(os.path.join(index_dir, "faiss_store.pkl"))
+                        # Recriar o vetor store
+                        st.session_state.vector_store = create_or_load_vector_store(
+                            _embeddings=embeddings,
+                            docs_dir=docs_dir,
+                            index_dir=index_dir
+                        )
+                        st.rerun()
+                    else:
+                        st.error("Nenhum arquivo foi salvo com sucesso.")
 
         # Listar documentos existentes
         st.header("Documentos Disponíveis")
@@ -297,7 +276,6 @@ with st.sidebar:
         if st.button("Recriar Banco de Dados"):
             with st.spinner("Recriando índice vetorial..."):
                 try:
-                    # Limpar diretório do índice
                     shutil.rmtree(index_dir, ignore_errors=True)
                     os.makedirs(index_dir, exist_ok=True)
                     
@@ -318,7 +296,7 @@ with st.sidebar:
         st.write(f"📄 Documentos: {docs_dir}")
         st.write(f"📊 Índices: {index_dir}")
 
-    # Configurar banco de dados (FAISS)
+    # Área principal - Chat
     try:
         if 'vector_store' not in st.session_state:
             with st.spinner("Configurando banco de dados..."):
