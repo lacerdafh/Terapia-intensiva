@@ -1,13 +1,15 @@
-# Ambiente virtual
+# Ambiente Virtual
+Chatbot/
 venv/
 env/
 .env
-pyvenv.cfg
 
-# Cache e arquivos temporários
+# Cache Python
 __pycache__/
+*.py[cod]
+*.so
+.Python
 *.pyc
-.cache/
 .pytest_cache/
 
 # Diretórios de dados
@@ -15,30 +17,25 @@ __pycache__/
 data/
 vector_store/
 uploaded_files/
-Chatbot/
 
-# Imagens temporárias ou screenshots
-screenshots/
-temp/
-*.screenshot.png
-
-# Permitir imagens da aplicação
-!static/images/*
-
-# IDE e editores
+# VS Code
 .vscode/
+*.code-workspace
+
+# PyCharm
 .idea/
-*.swp
+
+# Logs e bancos de dados
+*.log
+*.sqlite
+*.db
 
 # Sistema
 .DS_Store
 Thumbs.db
+desktop.ini
 
-# Arquivos criados pelo sistema operacional
-*.pyc
-__pycache__/
-.DS_Store
-
-
-# Logs
-*.log
+# Arquivos temporários
+*.tmp
+*.bak
+*.swp
