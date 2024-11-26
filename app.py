@@ -1,33 +1,24 @@
 import os
 import streamlit as st
 from langchain_chroma import Chroma
-from langchain_community.vectorstores import Chroma
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.document_loaders import TextLoader
 from langchain.schema import Document
 from langchain.embeddings.huggingface import HuggingFaceInferenceAPIEmbeddings
 from pydantic import SecretStr
 from langchain_groq import ChatGroq
-from langchain_community.document_loaders import PyPDFLoader
 from PyPDF2 import PdfReader
 from dotenv import load_dotenv
 from pathlib import Path
 import tomllib
-import shutil
-import sys
-from snowflake.connector import connect
-from langchain.vectorstores import SnowflakeVectorStore
-from snowflake.connector import connect
-
-# Suprimir avisos de depreciação
 import warnings
-warnings.filterwarnings('ignore')
+import shutil
 
-# Suprimir avisos do TensorFlow
+# Suprimir avisos
+warnings.filterwarnings('ignore')
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
-
+# Carregar configurações
 with open("config.toml", "rb") as f:
     config = tomllib.load(f)
 
@@ -35,16 +26,8 @@ os.environ["GROQ_API_KEY"] = config["api_keys"]["groq_api_key"]
 os.environ["HF_API_KEY"] = config["api_keys"]["hf_api_key"]
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-# Carregar variáveis de ambiente
 load_dotenv()
-snowflake_config = {
-    "account": st.secrets["snowflake"]["account"],
-    "user": st.secrets["snowflake"]["user"],
-    "password": st.secrets["snowflake"]["password"],
-    "warehouse": st.secrets["snowflake"]["warehouse"],
-    "database": st.secrets["snowflake"]["database"],
-    "schema": st.secrets["snowflake"]["schema"]
-}
+
 # Verificar a chave API
 if not os.getenv("GROQ_API_KEY"):
     raise ValueError("GROQ_API_KEY não encontrada no arquivo .env")
@@ -60,31 +43,34 @@ chat_model = ChatGroq(
 def get_embeddings():
     """Inicializa e retorna o modelo de embeddings usando HuggingFace Inference API."""
     try:
-        # Obtenha a chave de API do Hugging Face do arquivo .env
         hf_api_key = os.getenv("HF_API_KEY")
         if not hf_api_key:
             raise ValueError("A chave da API do Hugging Face (HF_API_KEY) não foi encontrada no .env")
 
         return HuggingFaceInferenceAPIEmbeddings(
-            api_key=SecretStr(hf_api_key),  # Chave da API
-            model_name="sentence-transformers/all-MiniLM-L6-v2",  # Modelo a ser utilizado
+            api_key=SecretStr(hf_api_key),
+            model_name="sentence-transformers/all-MiniLM-L6-v2",
         )
     except Exception as e:
         st.error(f"Erro ao carregar embeddings da HuggingFace API: {str(e)}")
         raise
 
-def get_app_directories() -> tuple[str, str, str]:
+def get_user_directories() -> tuple[str, str, str]:
     """Configura os diretórios da aplicação na pasta do usuário."""
-    base_dir = os.path.expanduser("~/chatbot_documents")
-    docs_dir = os.path.join(base_dir, "documents")
+    # Detectar o sistema operacional e definir o caminho base apropriado
+    if os.name == 'nt':  # Windows
+        base_dir = os.path.expanduser("~\\Documents\\ChatbotDrKinho")
+    else:  # Linux/Mac
+        base_dir = os.path.expanduser("~/ChatbotDrKinho")
+    
+    docs_dir = os.path.join(base_dir, "documentos")
     index_dir = os.path.join(base_dir, "vector_store")
     
+    # Criar diretórios se não existirem
     for directory in [base_dir, docs_dir, index_dir]:
         os.makedirs(directory, exist_ok=True)
         
     return base_dir, docs_dir, index_dir
-
-# Configurar SQLite
 
 def load_documents(folder_path: str) -> list[Document]:
     """Carrega documentos TXT e PDF de uma pasta."""
@@ -93,7 +79,6 @@ def load_documents(folder_path: str) -> list[Document]:
         file_path = os.path.join(folder_path, file_name)
         try:
             if file_name.lower().endswith(".txt"):
-                # Leitura manual para arquivos de texto
                 with open(file_path, 'r', encoding='utf-8') as file:
                     text = file.read()
                     documents.append(Document(
@@ -117,6 +102,7 @@ def create_or_load_vector_store(_embeddings, docs_dir: str, index_dir: str):
     persist_directory = os.path.join(index_dir, "chroma_db")
 
     try:
+        # Tentar carregar índice existente
         if os.path.exists(persist_directory) and os.listdir(persist_directory):
             st.info("Carregando índice Chroma existente...")
             return Chroma(
@@ -124,6 +110,7 @@ def create_or_load_vector_store(_embeddings, docs_dir: str, index_dir: str):
                 embedding_function=_embeddings
             )
 
+        # Criar novo índice
         st.info("Criando novo índice Chroma...")
         documents = load_documents(docs_dir)
         if not documents:
@@ -132,13 +119,13 @@ def create_or_load_vector_store(_embeddings, docs_dir: str, index_dir: str):
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
         texts = text_splitter.split_documents(documents)
 
-        vector_store = SnowflakeVectorStore(
-          connection=init_snowflake_connection(),
-             embeddings=embeddings,
-             table_name="EMBEDDINGS_TABLE",
-               dimension=1536  # dimensão para OpenAI embeddings
-                 )
-
+        # Criar e persistir vetor store localmente
+        vector_store = Chroma.from_documents(
+            documents=texts,
+            embedding=_embeddings,
+            persist_directory=persist_directory
+        )
+        
         vector_store.persist()
         return vector_store
 
@@ -161,15 +148,17 @@ def upload_files(uploaded_files, docs_dir: str) -> list[str]:
 def main():
     st.title("Chatbot com Dr. Kinho")
 
-    # Configurar diretórios
-    base_dir, docs_dir, index_dir = get_app_directories()
+    # Configurar diretórios do usuário
+    base_dir, docs_dir, index_dir = get_user_directories()
 
     # Obter embeddings
     embeddings = get_embeddings()
 
     with st.sidebar:
         image_path = Path(__file__).parent / "static" / "images" / "app_header.png"
-        st.image(str(image_path), caption="Dr. Kinho", use_container_width=True)
+        if image_path.exists():
+            st.image(str(image_path), caption="Dr. Kinho", use_container_width=True)
+        
         st.header("Gerenciamento de Documentos")
 
         # Upload de documentos
@@ -211,17 +200,15 @@ def main():
 
             if files_to_delete and st.button("Deletar Selecionados"):
                 with st.spinner("Deletando arquivos..."):
-                    deleted_files = []
                     for file in files_to_delete:
                         try:
                             os.remove(os.path.join(docs_dir, file))
-                            deleted_files.append(file)
+                            st.success(f"Arquivo deletado: {file}")
                         except Exception as e:
                             st.error(f"Erro ao deletar {file}: {e}")
-                    if deleted_files:
-                        st.success(f"Arquivos deletados: {', '.join(deleted_files)}")
-                        st.cache_resource.clear()
-                        st.rerun()
+                    st.cache_resource.clear()
+                    st.rerun()
+
         else:
             st.info("Nenhum documento carregado.")
 
@@ -229,6 +216,10 @@ def main():
         if st.button("Recriar Banco de Dados"):
             with st.spinner("Recriando índice vetorial..."):
                 try:
+                    # Limpar diretório do índice
+                    shutil.rmtree(index_dir, ignore_errors=True)
+                    os.makedirs(index_dir, exist_ok=True)
+                    
                     st.cache_resource.clear()
                     st.session_state.vector_store = create_or_load_vector_store(
                         _embeddings=embeddings,
@@ -239,10 +230,12 @@ def main():
                 except Exception as e:
                     st.error(f"Erro ao recriar banco de dados: {e}")
                 st.rerun()
-            st.header("Informações")
-            st.write(f"📁 Base: {base_dir}")
-            st.write(f"📄 Documentos: {docs_dir}")
-            st.write(f"📊 Índices: {index_dir}")
+
+        # Mostrar informações dos diretórios
+        st.header("Informações")
+        st.write(f"📁 Base: {base_dir}")
+        st.write(f"📄 Documentos: {docs_dir}")
+        st.write(f"📊 Índices: {index_dir}")
 
     # Configurar banco de dados (Chroma)
     try:
@@ -253,19 +246,17 @@ def main():
                     docs_dir=docs_dir,
                     index_dir=index_dir
                 )
-                st.success("Banco de dados configurado!")
 
         # Configurar o retriever para busca
         retriever = st.session_state.vector_store.as_retriever(search_kwargs={"k": 5})
 
-        # Entrada de perguntas
+        # Interface de chat
         user_question = st.text_input("Faça sua pergunta sobre os documentos:")
+        
         if user_question:
             with st.spinner("Processando..."):
-                # Recuperar os documentos relevantes
                 context = retriever.get_relevant_documents(user_question)
 
-                # Configurar o modelo de chat (Groq ou similar)
                 chat_model = ChatGroq(
                     api_key=GROQ_API_KEY,
                     model_name="llama-3.2-3b-preview",
@@ -273,7 +264,6 @@ def main():
                     max_tokens=512
                 )
 
-                # Montar mensagens
                 messages = [
                     ("system", "Você é um assistente que responde com base no contexto fornecido."),
                     ("user", f"""
@@ -282,10 +272,8 @@ def main():
                     """)
                 ]
 
-                # Obter resposta do modelo
                 response = chat_model.invoke(messages)
 
-                # Exibir resposta e fontes
                 with st.container():
                     st.markdown("### Resposta:")
                     st.write(response.content)
@@ -297,7 +285,6 @@ def main():
 
     except Exception as e:
         st.error(f"Erro: {str(e)}")
-
 
 if __name__ == "__main__":
     main()
