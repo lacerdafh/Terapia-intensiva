@@ -108,42 +108,7 @@ def upload_files(uploaded_files, docs_dir: str) -> list[str]:
         except Exception as e:
             st.error(f"Erro ao salvar arquivo {uploaded_file.name}: {e}")
     return saved_files
-def clean_response(response_content: str) -> str:
-    """Limpa a resposta removendo metadados e informações desnecessárias."""
-    try:
-        # Remove todos os metadados que começam com "additional_kwargs", "response_metadata", etc.
-        content_lines = []
-        skip_section = False
-        
-        for line in response_content.split('\n'):
-            # Pula linhas que contêm metadados
-            if any(meta in line for meta in [
-                "additional_kwargs",
-                "response_metadata",
-                "type",
-                "name",
-                "id",
-                "example",
-                "tool_calls",
-                "invalid_tool_calls",
-                "usage_metadata"
-            ]):
-                skip_section = True
-                continue
-                
-            # Se encontrar uma linha em branco, resetar o skip_section
-            if not line.strip():
-                skip_section = False
-                continue
-                
-            # Adiciona apenas linhas que não estão em seções para pular
-            if not skip_section:
-                content_lines.append(line)
-        
-        return '\n'.join(content_lines).strip()
-    except Exception:
-        # Se algo der errado, retorna o conteúdo original
-        return response_content
+
 
 def main():
     st.title("Chatbot com Dr. Kinho")
@@ -277,7 +242,7 @@ def main():
                 with st.container():
                     st.markdown("### Resposta:")
                     # Limpa a resposta antes de mostrar
-                    clean_content = clean_response(response.content)
+                    clean_content = response.content
                     st.write(clean_content)
                     
                     st.markdown("#### Fontes consultadas:")

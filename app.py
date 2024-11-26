@@ -1,60 +1,66 @@
 import os
 import streamlit as st
+from langchain_chroma import Chroma
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import TextLoader
-from langchain.prompts import ChatPromptTemplate
 from langchain.schema import Document
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_community.vectorstores import Chroma  # Substituindo FAISS por Chroma
+from langchain.embeddings.huggingface import HuggingFaceInferenceAPIEmbeddings
+from pydantic import SecretStr
+from langchain_groq import ChatGroq
 from PyPDF2 import PdfReader
 from dotenv import load_dotenv
-from langchain_groq import ChatGroq
 from pathlib import Path
+import subprocess
 
 # Suprimir avisos do TensorFlow
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 # Carregar variáveis de ambiente
 load_dotenv()
 
 # Verificar a chave API
-if 'GROQ_API_KEY' in st.secrets:
-    GROQ_API_KEY = st.secrets['GROQ_API_KEY']
-else:
-    GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+if not os.getenv("GROQ_API_KEY"):
+    raise ValueError("GROQ_API_KEY não encontrada no arquivo .env")
 
-if not GROQ_API_KEY:
-    st.error("GROQ_API_KEY não encontrada!")
-    st.stop()
+# Inicializar o modelo Groq
+chat_model = ChatGroq(
+    model_name="llama-3.2-3b-preview",
+    temperature=0.7,
+    max_tokens=512
+)
 
 @st.cache_resource
 def get_embeddings():
-    """Inicializa e retorna o modelo de embeddings."""
+    """Inicializa e retorna o modelo de embeddings usando HuggingFace Inference API."""
     try:
-        return HuggingFaceEmbeddings(
-            model_name="sentence-transformers/all-MiniLM-L6-v2",
-            model_kwargs={'device': 'cpu'},
-            encode_kwargs={'normalize_embeddings': True}
+        # Obtenha a chave de API do Hugging Face do arquivo .env
+        hf_api_key = os.getenv("HF_API_KEY")
+        if not hf_api_key:
+            raise ValueError("A chave da API do Hugging Face (HF_API_KEY) não foi encontrada no .env")
+
+        return HuggingFaceInferenceAPIEmbeddings(
+            api_key=SecretStr(hf_api_key),  # Chave da API
+            model_name="sentence-transformers/all-MiniLM-L6-v2",  # Modelo a ser utilizado
         )
     except Exception as e:
-        st.error(f"Erro ao carregar modelo de embeddings: {str(e)}")
+        st.error(f"Erro ao carregar embeddings da HuggingFace API: {str(e)}")
         raise
 
 def get_app_directories() -> tuple[str, str, str]:
-    """Configura os diretórios da aplicação."""
-    # Usar diretórios temporários para o Streamlit Cloud
-    base_dir = os.path.join(os.getcwd(), "temp_data")
+    """Configura os diretórios da aplicação na pasta do usuário."""
+    base_dir = os.path.expanduser("~/chatbot_documents")
     docs_dir = os.path.join(base_dir, "documents")
-    db_dir = os.path.join(base_dir, "db")
+    index_dir = os.path.join(base_dir, "vector_store")
     
-    for directory in [base_dir, docs_dir, db_dir]:
+    for directory in [base_dir, docs_dir, index_dir]:
         os.makedirs(directory, exist_ok=True)
         
-    return base_dir, docs_dir, db_dir
+    return base_dir, docs_dir, index_dir
 
 def load_documents(folder_path: str) -> list[Document]:
-    """Carrega documentos TXT e PDF."""
+    """Carrega documentos TXT e PDF de uma pasta."""
     documents = []
     for file_name in os.listdir(folder_path):
         file_path = os.path.join(folder_path, file_name)
@@ -71,173 +77,183 @@ def load_documents(folder_path: str) -> list[Document]:
     return documents
 
 @st.cache_resource
-def create_or_load_vector_store(_docs_dir: str, _db_dir: str, embeddings):
-    """Cria ou carrega o vector store usando Chroma."""
+def create_or_load_vector_store(_embeddings, docs_dir: str, index_dir: str):
+    """Cria ou carrega o índice Chroma no diretório local."""
+    persist_directory = os.path.join(index_dir, "chroma_db")
+
     try:
-        # Criar nova instância do Chroma
-        documents = load_documents(_docs_dir)
+        if os.path.exists(persist_directory) and os.listdir(persist_directory):
+            st.info("Carregando índice Chroma existente...")
+            return Chroma(
+                persist_directory=persist_directory,
+                embedding_function=_embeddings
+            )
+
+        st.info("Criando novo índice Chroma...")
+        documents = load_documents(docs_dir)
         if not documents:
             raise RuntimeError("Nenhum documento válido encontrado.")
-        
-        text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=200
-        )
+
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
         texts = text_splitter.split_documents(documents)
-        
-        # Usar Chroma em vez de FAISS
+
         vector_store = Chroma.from_documents(
             documents=texts,
-            embedding=embeddings,
-            persist_directory=_db_dir
+            embedding=_embeddings,
+            persist_directory=persist_directory
         )
-        
-        return vector_store
-    except Exception as e:
-        raise RuntimeError(f"Erro ao criar/carregar o vector store: {str(e)}")
 
-def clean_response(response_content: str) -> str:
-    """Limpa a resposta removendo metadados."""
-    try:
-        content_lines = []
-        skip_section = False
-        
-        for line in response_content.split('\n'):
-            if any(meta in line for meta in [
-                "additional_kwargs",
-                "response_metadata",
-                "type",
-                "name",
-                "id",
-                "example",
-                "tool_calls",
-                "invalid_tool_calls",
-                "usage_metadata"
-            ]):
-                skip_section = True
-                continue
-                
-            if not line.strip():
-                skip_section = False
-                continue
-                
-            if not skip_section:
-                content_lines.append(line)
-        
-        return '\n'.join(content_lines).strip()
-    except Exception:
-        return response_content
+        vector_store.persist()
+        return vector_store
+
+    except Exception as e:
+        raise RuntimeError(f"Erro ao criar/carregar o índice Chroma: {str(e)}")
+
+def upload_files(uploaded_files, docs_dir: str) -> list[str]:
+    """Salva múltiplos arquivos enviados no diretório de documentos."""
+    saved_files = []
+    for uploaded_file in uploaded_files:
+        try:
+            file_path = os.path.join(docs_dir, uploaded_file.name)
+            with open(file_path, "wb") as f:
+                f.write(uploaded_file.getbuffer())
+            saved_files.append(uploaded_file.name)
+        except Exception as e:
+            st.error(f"Erro ao salvar arquivo {uploaded_file.name}: {e}")
+    return saved_files
 
 def main():
-    st.title("Chatbot com Documentos Locais")
-    
-    base_dir, docs_dir, db_dir = get_app_directories()
+    st.title("Chatbot com Dr. Kinho")
+
+    # Configurar diretórios
+    base_dir, docs_dir, index_dir = get_app_directories()
+
+    # Obter embeddings
     embeddings = get_embeddings()
-    
+
     with st.sidebar:
-        st.header("Controles")
-        
+        image_path = Path(__file__).parent / "static" / "images" / "app_header.png"
+        st.image(str(image_path), caption="Dr. Kinho", use_container_width=True)
+        st.header("Gerenciamento de Documentos")
+
+        # Upload de documentos
         uploaded_files = st.file_uploader(
-            "Enviar documentos",
-            type=['txt', 'pdf'],
+            "Envie documentos (TXT ou PDF)",
+            type=["txt", "pdf"],
             accept_multiple_files=True
         )
-        
+
         if uploaded_files:
             with st.spinner("Salvando arquivos..."):
-                for uploaded_file in uploaded_files:
-                    file_path = os.path.join(docs_dir, uploaded_file.name)
-                    with open(file_path, "wb") as f:
-                        f.write(uploaded_file.getbuffer())
-                st.success("Arquivos salvos com sucesso!")
-                st.cache_resource.clear()
-                st.rerun()
-        
+                saved_files = upload_files(uploaded_files, docs_dir)
+                if saved_files:
+                    st.success(f"Arquivos salvos: {', '.join(saved_files)}")
+                    st.cache_resource.clear()
+                    st.rerun()
+
+        # Listar documentos existentes
         st.header("Documentos Disponíveis")
         files = os.listdir(docs_dir)
-        
+
         if files:
-            file_data = []
-            for file in files:
-                file_path = os.path.join(docs_dir, file)
-                size_kb = os.path.getsize(file_path) / 1024
-                file_data.append({
+            file_data = [
+                {
                     "Arquivo": file,
-                    "Tamanho (KB)": f"{size_kb:.1f}"
-                })
-            
+                    "Tamanho (KB)": f"{os.path.getsize(os.path.join(docs_dir, file)) / 1024:.1f}"
+                }
+                for file in files
+            ]
+
             st.dataframe(
                 file_data,
-                column_config={
-                    "Arquivo": "Arquivo",
-                    "Tamanho (KB)": st.column_config.NumberColumn(
-                        "Tamanho (KB)",
-                        format="%.1f KB"
-                    )
-                },
                 hide_index=True,
                 use_container_width=True
             )
-            
-            files_to_delete = st.multiselect(
-                "Selecione arquivos para deletar:",
-                files
-            )
-            
-            if files_to_delete and st.button("Deletar Selecionados", type="primary"):
-                for file in files_to_delete:
-                    try:
-                        os.remove(os.path.join(docs_dir, file))
-                    except Exception as e:
-                        st.error(f"Erro ao deletar {file}: {e}")
-                st.success("Arquivos deletados com sucesso!")
-                st.cache_resource.clear()
-                st.rerun()
-        else:
-            st.info("Nenhum documento carregado")
-        
-        if st.button("Recriar Índice"):
-            st.cache_resource.clear()
-            st.rerun()
 
+            # Opção para deletar arquivos
+            files_to_delete = st.multiselect("Selecione arquivos para deletar:", files)
+
+            if files_to_delete and st.button("Deletar Selecionados"):
+                with st.spinner("Deletando arquivos..."):
+                    deleted_files = []
+                    for file in files_to_delete:
+                        try:
+                            os.remove(os.path.join(docs_dir, file))
+                            deleted_files.append(file)
+                        except Exception as e:
+                            st.error(f"Erro ao deletar {file}: {e}")
+                    if deleted_files:
+                        st.success(f"Arquivos deletados: {', '.join(deleted_files)}")
+                        st.cache_resource.clear()
+                        st.rerun()
+        else:
+            st.info("Nenhum documento carregado.")
+
+        # Recriar índice vetorial
+        if st.button("Recriar Banco de Dados"):
+            with st.spinner("Recriando índice vetorial..."):
+                try:
+                    st.cache_resource.clear()
+                    st.session_state.vector_store = create_or_load_vector_store(
+                        _embeddings=embeddings,
+                        docs_dir=docs_dir,
+                        index_dir=index_dir
+                    )
+                    st.success("Banco de dados recriado com sucesso!")
+                except Exception as e:
+                    st.error(f"Erro ao recriar banco de dados: {e}")
+                st.rerun()
+            st.header("Informações")
+            st.write(f"📁 Base: {base_dir}")
+            st.write(f"📄 Documentos: {docs_dir}")
+            st.write(f"📊 Índices: {index_dir}")
+
+    # Configurar banco de dados (Chroma)
     try:
         if 'vector_store' not in st.session_state:
             with st.spinner("Configurando banco de dados..."):
                 st.session_state.vector_store = create_or_load_vector_store(
-                    docs_dir, db_dir, embeddings
+                    _embeddings=embeddings,
+                    docs_dir=docs_dir,
+                    index_dir=index_dir
                 )
                 st.success("Banco de dados configurado!")
 
-        chat_model = ChatGroq(
-            temperature=0.4,
-            max_tokens=1024,
-            model_name="mixtral-8x7b-32768",
-        )
+        # Configurar o retriever para busca
+        retriever = st.session_state.vector_store.as_retriever(search_kwargs={"k": 5})
 
+        # Entrada de perguntas
         user_question = st.text_input("Faça sua pergunta sobre os documentos:")
         if user_question:
             with st.spinner("Processando..."):
-                retriever = st.session_state.vector_store.as_retriever(
-                    search_kwargs={"k": 5}
-                )
+                # Recuperar os documentos relevantes
                 context = retriever.get_relevant_documents(user_question)
-                
+
+                # Configurar o modelo de chat (Groq ou similar)
+                chat_model = ChatGroq(
+                    api_key=GROQ_API_KEY,
+                    model_name="llama-3.2-3b-preview",
+                    temperature=0.4,
+                    max_tokens=512
+                )
+
+                # Montar mensagens
                 messages = [
-                    ("system", "Você é um assistente prestativo que responde perguntas baseado apenas no contexto fornecido."),
+                    ("system", "Você é um assistente que responde com base no contexto fornecido."),
                     ("user", f"""
                     Contexto: {' '.join(doc.page_content for doc in context)}
-                    
                     Pergunta: {user_question}
                     """)
                 ]
-                
+
+                # Obter resposta do modelo
                 response = chat_model.invoke(messages)
-                
+
+                # Exibir resposta e fontes
                 with st.container():
                     st.markdown("### Resposta:")
-                    clean_content = clean_response(response.content)
-                    st.write(clean_content)
-                    
+                    st.write(response.content)
+
                     st.markdown("#### Fontes consultadas:")
                     sources = set(doc.metadata.get('source', 'Desconhecido') for doc in context)
                     for source in sources:
@@ -245,6 +261,7 @@ def main():
 
     except Exception as e:
         st.error(f"Erro: {str(e)}")
+
 
 if __name__ == "__main__":
     main()
