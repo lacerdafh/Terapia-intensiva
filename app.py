@@ -7,10 +7,10 @@ from langchain.schema import Document
 from langchain.embeddings.huggingface import HuggingFaceInferenceAPIEmbeddings
 from pydantic import SecretStr
 from langchain_groq import ChatGroq
-from PyPDF2 import PdfReader
+from langchain_community.document_loaders import PyPDFLoader
 from dotenv import load_dotenv
 from pathlib import Path
-import subprocess
+
 
 # Suprimir avisos do TensorFlow
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'

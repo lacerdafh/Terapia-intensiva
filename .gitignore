@@ -15,6 +15,7 @@ __pycache__/
 data/
 vector_store/
 uploaded_files/
+Chatbot/
 
 # Imagens temporárias ou screenshots
 screenshots/
@@ -32,3 +33,12 @@ temp/
 # Sistema
 .DS_Store
 Thumbs.db
+
+# Arquivos criados pelo sistema operacional
+*.pyc
+__pycache__/
+.DS_Store
+
+
+# Logs
+*.log
