@@ -1,6 +1,7 @@
 import os
 import streamlit as st
 from langchain_chroma import Chroma
+from langchain_community.vectorstores import Chroma
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import TextLoader
 from langchain.schema import Document
@@ -8,11 +9,16 @@ from langchain.embeddings.huggingface import HuggingFaceInferenceAPIEmbeddings
 from pydantic import SecretStr
 from langchain_groq import ChatGroq
 from langchain_community.document_loaders import PyPDFLoader
+from PyPDF2 import PdfReader
 from dotenv import load_dotenv
 from pathlib import Path
 import tomllib
+import shutil
+import sys
 
-
+# Suprimir avisos de depreciação
+import warnings
+warnings.filterwarnings('ignore')
 
 # Suprimir avisos do TensorFlow
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
@@ -21,6 +27,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 with open("config.toml", "rb") as f:
     config = tomllib.load(f)
+
 os.environ["GROQ_API_KEY"] = config["api_keys"]["groq_api_key"]
 os.environ["HF_API_KEY"] = config["api_keys"]["hf_api_key"]
 
@@ -67,6 +74,10 @@ def get_app_directories() -> tuple[str, str, str]:
         
     return base_dir, docs_dir, index_dir
 
+# Configurar SQLite
+__import__('pysqlite3')
+sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+
 def load_documents(folder_path: str) -> list[Document]:
     """Carrega documentos TXT e PDF de uma pasta."""
     documents = []
@@ -74,12 +85,20 @@ def load_documents(folder_path: str) -> list[Document]:
         file_path = os.path.join(folder_path, file_name)
         try:
             if file_name.lower().endswith(".txt"):
-                loader = TextLoader(file_path)
-                documents.extend(loader.load())
+                # Leitura manual para arquivos de texto
+                with open(file_path, 'r', encoding='utf-8') as file:
+                    text = file.read()
+                    documents.append(Document(
+                        page_content=text,
+                        metadata={"source": file_path}
+                    ))
             elif file_name.lower().endswith(".pdf"):
-                pdf_reader = PyPDFLoader(file_path)
+                pdf_reader = PdfReader(file_path)
                 text = "\n".join(page.extract_text() for page in pdf_reader.pages)
-                documents.append(Document(page_content=text, metadata={"source": file_path}))
+                documents.append(Document(
+                    page_content=text,
+                    metadata={"source": file_path}
+                ))
         except Exception as e:
             st.warning(f"Erro ao carregar {file_name}: {str(e)}")
     return documents
