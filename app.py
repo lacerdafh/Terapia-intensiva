@@ -15,6 +15,9 @@ from pathlib import Path
 # Suprimir avisos do TensorFlow
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+import os
+os.environ["GROQ_API_KEY"] = config["api_keys"]["groq_api_key"]
+os.environ["HF_API_KEY"] = config["api_keys"]["hf_api_key"]
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 # Carregar variáveis de ambiente
