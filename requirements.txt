@@ -17,6 +17,7 @@ typing-extensions>=4.8.0
 snowflake-connector-python
 snowflake-sqlalchemy
 langchain
+faiss-cpu
 
 
 
