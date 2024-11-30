@@ -1,25 +1,31 @@
 import os
 import streamlit as st
+from langchain_chroma import Chroma
+from langchain_community.vectorstores import Chroma
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.document_loaders import TextLoader
 from langchain.schema import Document
 from langchain.embeddings.huggingface import HuggingFaceInferenceAPIEmbeddings
-from langchain_community.vectorstores import FAISS
 from pydantic import SecretStr
 from langchain_groq import ChatGroq
+from langchain_community.document_loaders import PyPDFLoader
 from PyPDF2 import PdfReader
 from dotenv import load_dotenv
 from pathlib import Path
 import tomllib
-import warnings
-import pickle
 import shutil
+import sys
 
-# Suprimir avisos
+
+# Suprimir avisos de depreciação
+import warnings
 warnings.filterwarnings('ignore')
+
+# Suprimir avisos do TensorFlow
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
-# Carregar configurações
+
 with open("config.toml", "rb") as f:
     config = tomllib.load(f)
 
@@ -27,6 +33,7 @@ os.environ["GROQ_API_KEY"] = config["api_keys"]["groq_api_key"]
 os.environ["HF_API_KEY"] = config["api_keys"]["hf_api_key"]
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+# Carregar variáveis de ambiente
 load_dotenv()
 
 # Verificar a chave API
@@ -44,33 +51,31 @@ chat_model = ChatGroq(
 def get_embeddings():
     """Inicializa e retorna o modelo de embeddings usando HuggingFace Inference API."""
     try:
+        # Obtenha a chave de API do Hugging Face do arquivo .env
         hf_api_key = os.getenv("HF_API_KEY")
         if not hf_api_key:
             raise ValueError("A chave da API do Hugging Face (HF_API_KEY) não foi encontrada no .env")
 
         return HuggingFaceInferenceAPIEmbeddings(
-            api_key=hf_api_key,  # Removido SecretStr
-            model_name="sentence-transformers/all-MiniLM-L6-v2",
+            api_key=SecretStr(hf_api_key),  # Chave da API
+            model_name="sentence-transformers/all-MiniLM-L6-v2",  # Modelo a ser utilizado
         )
     except Exception as e:
         st.error(f"Erro ao carregar embeddings da HuggingFace API: {str(e)}")
         raise
 
-def get_user_directories() -> tuple[str, str, str]:
+def get_app_directories() -> tuple[str, str, str]:
     """Configura os diretórios da aplicação na pasta do usuário."""
-    if os.name == 'nt':  # Windows
-        base_dir = os.path.expanduser("~\\Documents\\ChatbotDrKinho")
-    else:  # Linux/Mac
-        base_dir = os.path.expanduser("~/ChatbotDrKinho")
-    
-    docs_dir = os.path.join(base_dir, "documentos")
+    base_dir = os.path.expanduser("~/chatbot_documents")
+    docs_dir = os.path.join(base_dir, "documents")
     index_dir = os.path.join(base_dir, "vector_store")
     
-    # Criar diretórios se não existirem
     for directory in [base_dir, docs_dir, index_dir]:
         os.makedirs(directory, exist_ok=True)
         
     return base_dir, docs_dir, index_dir
+
+# Configurar SQLite
 
 def load_documents(folder_path: str) -> list[Document]:
     """Carrega documentos TXT e PDF de uma pasta."""
@@ -79,6 +84,7 @@ def load_documents(folder_path: str) -> list[Document]:
         file_path = os.path.join(folder_path, file_name)
         try:
             if file_name.lower().endswith(".txt"):
+                # Leitura manual para arquivos de texto
                 with open(file_path, 'r', encoding='utf-8') as file:
                     text = file.read()
                     documents.append(Document(
@@ -98,21 +104,18 @@ def load_documents(folder_path: str) -> list[Document]:
 
 @st.cache_resource
 def create_or_load_vector_store(_embeddings, docs_dir: str, index_dir: str):
-    """Cria ou carrega o índice FAISS no diretório local."""
-    index_path = os.path.join(index_dir, "faiss_index")
-    pickle_path = os.path.join(index_dir, "faiss_store.pkl")
+    """Cria ou carrega o índice Chroma no diretório local."""
+    persist_directory = os.path.join(index_dir, "chroma_db")
 
     try:
-        # Tentar carregar índice existente
-        if os.path.exists(index_path) and os.path.exists(pickle_path):
-            st.info("Carregando índice FAISS existente...")
-            vector_store = FAISS.load_local(index_path, _embeddings)
-            with open(pickle_path, 'rb') as f:
-                vector_store.__dict__.update(pickle.load(f))
-            return vector_store
+        if os.path.exists(persist_directory) and os.listdir(persist_directory):
+            st.info("Carregando índice Chroma existente...")
+            return Chroma(
+                persist_directory=persist_directory,
+                embedding_function=_embeddings
+            )
 
-        # Criar novo índice
-        st.info("Criando novo índice FAISS...")
+        st.info("Criando novo índice Chroma...")
         documents = load_documents(docs_dir)
         if not documents:
             raise RuntimeError("Nenhum documento válido encontrado.")
@@ -120,121 +123,59 @@ def create_or_load_vector_store(_embeddings, docs_dir: str, index_dir: str):
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
         texts = text_splitter.split_documents(documents)
 
-        # Criar vetor store
-        vector_store = FAISS.from_documents(texts, _embeddings)
-        
-        # Salvar índice e metadados
-        vector_store.save_local(index_path)
-        with open(pickle_path, 'wb') as f:
-            pickle.dump(vector_store.__dict__, f)
-        
+        vector_store = Chroma.from_documents(
+            documents=texts,
+            embedding=_embeddings,
+            persist_directory=persist_directory
+        )
+
+        vector_store.persist()
         return vector_store
 
     except Exception as e:
-        raise RuntimeError(f"Erro ao criar/carregar o índice FAISS: {str(e)}")
-
-# [Todas as importações e configurações iniciais permanecem iguais até a função upload_files]
+        raise RuntimeError(f"Erro ao criar/carregar o índice Chroma: {str(e)}")
 
 def upload_files(uploaded_files, docs_dir: str) -> list[str]:
     """Salva múltiplos arquivos enviados no diretório de documentos."""
     saved_files = []
-    
-    # Garantir que o diretório existe
-    if not os.path.exists(docs_dir):
-        os.makedirs(docs_dir, exist_ok=True)
-        st.info(f"Diretório criado: {docs_dir}")
-    
     for uploaded_file in uploaded_files:
         try:
-            # Verificar se o arquivo está vazio
-            if uploaded_file is None:
-                st.warning("Arquivo vazio detectado. Pulando...")
-                continue
-                
-            # Criar o caminho completo do arquivo
             file_path = os.path.join(docs_dir, uploaded_file.name)
-            
-            # Mostrar informações do arquivo
-            st.info(f"Processando arquivo: {uploaded_file.name}")
-            st.info(f"Tamanho: {uploaded_file.size} bytes")
-            st.info(f"Tipo: {uploaded_file.type}")
-            
-            # Ler o conteúdo do arquivo em chunks para arquivos grandes
             with open(file_path, "wb") as f:
-                file_content = uploaded_file.getbuffer()
-                f.write(file_content)
-                
-            # Verificar se o arquivo foi salvo corretamente
-            if os.path.exists(file_path):
-                saved_size = os.path.getsize(file_path)
-                if saved_size > 0:
-                    saved_files.append(uploaded_file.name)
-                    st.success(f"Arquivo salvo com sucesso: {file_path} ({saved_size} bytes)")
-                else:
-                    st.error(f"Arquivo salvo está vazio: {file_path}")
-            else:
-                st.error(f"Falha ao salvar arquivo: {file_path}")
-                
+                f.write(uploaded_file.getbuffer())
+            saved_files.append(uploaded_file.name)
         except Exception as e:
-            st.error(f"Erro ao salvar arquivo {uploaded_file.name}: {str(e)}")
-            import traceback
-            st.error(f"Detalhes do erro: {traceback.format_exc()}")
-            
+            st.error(f"Erro ao salvar arquivo {uploaded_file.name}: {e}")
     return saved_files
 
 def main():
     st.title("Chatbot com Dr. Kinho")
 
-    # Configurar diretórios do usuário
-    base_dir, docs_dir, index_dir = get_user_directories()
+    # Configurar diretórios
+    base_dir, docs_dir, index_dir = get_app_directories()
 
     # Obter embeddings
     embeddings = get_embeddings()
 
-    # Sidebar
     with st.sidebar:
         image_path = Path(__file__).parent / "static" / "images" / "app_header.png"
-        if image_path.exists():
-            st.image(str(image_path), caption="Dr. Kinho", use_container_width=True)
-        
+        st.image(str(image_path), caption="Dr. Kinho", use_container_width=True)
         st.header("Gerenciamento de Documentos")
 
-        # Upload de documentos com informações de debug
-        st.write("### Upload de Documentos")
-        st.write("Diretório de destino:", docs_dir)
-        
+        # Upload de documentos
         uploaded_files = st.file_uploader(
             "Envie documentos (TXT ou PDF)",
             type=["txt", "pdf"],
-            accept_multiple_files=True,
-            key="file_uploader"
+            accept_multiple_files=True
         )
 
         if uploaded_files:
-            st.write(f"Arquivos selecionados: {len(uploaded_files)}")
-            for up_file in uploaded_files:
-                st.write(f"- {up_file.name} ({up_file.size} bytes)")
-                
-            if st.button("Confirmar Upload"):
-                with st.spinner("Salvando arquivos..."):
-                    saved_files = upload_files(uploaded_files, docs_dir)
-                    if saved_files:
-                        st.success(f"Arquivos salvos: {', '.join(saved_files)}")
-                        # Limpar cache e recarregar vetores
-                        st.cache_resource.clear()
-                        if os.path.exists(os.path.join(index_dir, "faiss_index")):
-                            shutil.rmtree(os.path.join(index_dir, "faiss_index"))
-                        if os.path.exists(os.path.join(index_dir, "faiss_store.pkl")):
-                            os.remove(os.path.join(index_dir, "faiss_store.pkl"))
-                        # Recriar o vetor store
-                        st.session_state.vector_store = create_or_load_vector_store(
-                            _embeddings=embeddings,
-                            docs_dir=docs_dir,
-                            index_dir=index_dir
-                        )
-                        st.rerun()
-                    else:
-                        st.error("Nenhum arquivo foi salvo com sucesso.")
+            with st.spinner("Salvando arquivos..."):
+                saved_files = upload_files(uploaded_files, docs_dir)
+                if saved_files:
+                    st.success(f"Arquivos salvos: {', '.join(saved_files)}")
+                    st.cache_resource.clear()
+                    st.rerun()
 
         # Listar documentos existentes
         st.header("Documentos Disponíveis")
@@ -260,15 +201,17 @@ def main():
 
             if files_to_delete and st.button("Deletar Selecionados"):
                 with st.spinner("Deletando arquivos..."):
+                    deleted_files = []
                     for file in files_to_delete:
                         try:
                             os.remove(os.path.join(docs_dir, file))
-                            st.success(f"Arquivo deletado: {file}")
+                            deleted_files.append(file)
                         except Exception as e:
                             st.error(f"Erro ao deletar {file}: {e}")
-                    st.cache_resource.clear()
-                    st.rerun()
-
+                    if deleted_files:
+                        st.success(f"Arquivos deletados: {', '.join(deleted_files)}")
+                        st.cache_resource.clear()
+                        st.rerun()
         else:
             st.info("Nenhum documento carregado.")
 
@@ -276,9 +219,6 @@ def main():
         if st.button("Recriar Banco de Dados"):
             with st.spinner("Recriando índice vetorial..."):
                 try:
-                    shutil.rmtree(index_dir, ignore_errors=True)
-                    os.makedirs(index_dir, exist_ok=True)
-                    
                     st.cache_resource.clear()
                     st.session_state.vector_store = create_or_load_vector_store(
                         _embeddings=embeddings,
@@ -289,14 +229,12 @@ def main():
                 except Exception as e:
                     st.error(f"Erro ao recriar banco de dados: {e}")
                 st.rerun()
+            st.header("Informações")
+            st.write(f"📁 Base: {base_dir}")
+            st.write(f"📄 Documentos: {docs_dir}")
+            st.write(f"📊 Índices: {index_dir}")
 
-        # Mostrar informações dos diretórios
-        st.header("Informações")
-        st.write(f"📁 Base: {base_dir}")
-        st.write(f"📄 Documentos: {docs_dir}")
-        st.write(f"📊 Índices: {index_dir}")
-
-    # Área principal - Chat
+    # Configurar banco de dados (Chroma)
     try:
         if 'vector_store' not in st.session_state:
             with st.spinner("Configurando banco de dados..."):
@@ -305,17 +243,19 @@ def main():
                     docs_dir=docs_dir,
                     index_dir=index_dir
                 )
+                st.success("Banco de dados configurado!")
 
         # Configurar o retriever para busca
         retriever = st.session_state.vector_store.as_retriever(search_kwargs={"k": 5})
 
-        # Interface de chat
+        # Entrada de perguntas
         user_question = st.text_input("Faça sua pergunta sobre os documentos:")
-        
         if user_question:
             with st.spinner("Processando..."):
+                # Recuperar os documentos relevantes
                 context = retriever.get_relevant_documents(user_question)
 
+                # Configurar o modelo de chat (Groq ou similar)
                 chat_model = ChatGroq(
                     api_key=GROQ_API_KEY,
                     model_name="llama-3.2-3b-preview",
@@ -323,6 +263,7 @@ def main():
                     max_tokens=512
                 )
 
+                # Montar mensagens
                 messages = [
                     ("system", "Você é um assistente que responde com base no contexto fornecido."),
                     ("user", f"""
@@ -331,8 +272,10 @@ def main():
                     """)
                 ]
 
+                # Obter resposta do modelo
                 response = chat_model.invoke(messages)
 
+                # Exibir resposta e fontes
                 with st.container():
                     st.markdown("### Resposta:")
                     st.write(response.content)
@@ -344,6 +287,7 @@ def main():
 
     except Exception as e:
         st.error(f"Erro: {str(e)}")
+
 
 if __name__ == "__main__":
     main()
