@@ -18,6 +18,6 @@ snowflake-connector-python
 snowflake-sqlalchemy
 langchain
 faiss-cpu
-
+sqlite3 >= 3.35.0
 
 
