@@ -1,4 +1,4 @@
-streamlit==1.40.1
+streamlit
 langchain>=0.1.0
 langchain-community
 langchain-groq==0.0.1
@@ -8,7 +8,7 @@ langsmith==0.1.146
 pydantic==2.10.1 
 pydantic-core==2.27.1 
 requests-toolbelt==1.0.0
-chromadb==0.5.20
+chromadb
 sentence-transformers==2.5.1
 python-dotenv==1.0.1
 PyPDF2==3.0.1
