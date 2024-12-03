@@ -2,7 +2,7 @@
 streamlit==1.32.2
 langchain-community==0.0.24
 langchain-groq==0.0.1
-langchain-chroma==0.0.14
+langchain-chroma==0.1.4
 chromadb==0.4.24
 pypdf2==3.0.1
 python-dotenv==1.0.1
