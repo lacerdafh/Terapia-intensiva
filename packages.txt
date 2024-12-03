@@ -3,4 +3,5 @@ build-essential
 gcc
 g++
 libsqlite3-dev
-sqlite3 >= 3.35.0
+python3-pip
+
