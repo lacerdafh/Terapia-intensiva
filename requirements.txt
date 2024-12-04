@@ -1,5 +1,6 @@
 faiss-cpu==1.9.0.post1
 langchain-community==0.3.9
+langchain_huggingface
 langchain-groq==0.2.1
 pipdeptree==2.24.0
 PyPDF2==3.0.1
