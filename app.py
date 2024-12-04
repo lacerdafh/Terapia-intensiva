@@ -55,7 +55,7 @@ def get_embeddings():
         if not hf_api_key:
             raise ValueError("A chave da API do Hugging Face (HF_API_KEY) não foi encontrada no .env")
 
-        return HuggingFaceInferenceAPIEmbeddings(
+        return HuggingFaceEmbeddings(
             api_key=SecretStr(hf_api_key),  # Chave da API
             model_name="sentence-transformers/all-MiniLM-L6-v2",  # Modelo a ser utilizado
         )
