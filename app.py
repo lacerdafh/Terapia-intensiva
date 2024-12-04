@@ -1,10 +1,10 @@
 import os
 import streamlit as st
-from langchain.vectorstores import FAISS
+from langchain_community.vectorstores import FAISS
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import TextLoader
 from langchain.schema import Document
-from langchain.embeddings.huggingface import HuggingFaceInferenceAPIEmbeddings
+from langchain_huggingface.embeddings import HuggingFaceEmbeddings
 from pydantic import SecretStr
 from langchain_groq import ChatGroq
 from langchain_community.document_loaders import PyPDFLoader
