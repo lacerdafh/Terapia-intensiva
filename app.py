@@ -2,44 +2,33 @@ import os
 import streamlit as st
 from langchain_community.vectorstores import FAISS
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.document_loaders import TextLoader
 from langchain.schema import Document
 from langchain_huggingface.embeddings import HuggingFaceEmbeddings
-from pydantic import SecretStr
 from langchain_groq import ChatGroq
-from langchain_community.document_loaders import PyPDFLoader
 from PyPDF2 import PdfReader
 from dotenv import load_dotenv
 from pathlib import Path
 import tomllib
-import shutil
-import sys
-
-
-# Suprimir avisos de depreciação
 import warnings
-warnings.filterwarnings('ignore')
 
-# Suprimir avisos do TensorFlow
+# Suprimir avisos
+warnings.filterwarnings('ignore')
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
-
+# Carregar configurações do arquivo config.toml
 with open("config.toml", "rb") as f:
     config = tomllib.load(f)
 
 os.environ["GROQ_API_KEY"] = config["api_keys"]["groq_api_key"]
 os.environ["HF_API_KEY"] = config["api_keys"]["hf_api_key"]
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-# Carregar variáveis de ambiente
 load_dotenv()
-
-# Verificar a chave API
-if not os.getenv("GROQ_API_KEY"):
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+if not GROQ_API_KEY:
     raise ValueError("GROQ_API_KEY não encontrada no arquivo .env")
 
-# Inicializar o modelo Groq
+# Inicializar modelo de chat Groq
 chat_model = ChatGroq(
     model_name="llama-3.2-3b-preview",
     temperature=0.3,
@@ -48,86 +37,60 @@ chat_model = ChatGroq(
 
 @st.cache_resource
 def get_embeddings():
-    """Inicializa e retorna o modelo de embeddings usando HuggingFace Embeddings."""
-    try:
-        # Obtenha a chave de API do Hugging Face do arquivo .env
-        hf_api_key = os.getenv("HF_API_KEY")
-        if not hf_api_key:
-            raise ValueError("A chave da API do Hugging Face (HF_API_KEY) não foi encontrada no .env")
-
-        return HuggingFaceEmbeddings(
-            model_name="sentence-transformers/all-MiniLM-L6-v2",  # Modelo a ser utilizado
-        )
-    except Exception as e:
-        st.error(f"Erro ao carregar embeddings da HuggingFace API: {str(e)}")
-        raise
+    """Inicializa e retorna o modelo de embeddings."""
+    hf_api_key = os.getenv("HF_API_KEY")
+    if not hf_api_key:
+        raise ValueError("HF_API_KEY não encontrada no arquivo .env")
+    return HuggingFaceEmbeddings(
+        model_name="sentence-transformers/all-MiniLM-L6-v2"
+    )
 
 def get_app_directories() -> tuple[str, str, str]:
-    """Configura os diretórios da aplicação na pasta do usuário."""
+    """Configura diretórios para documentos e índices."""
     base_dir = os.path.expanduser("~/chatbot_documents")
     docs_dir = os.path.join(base_dir, "documents")
     index_dir = os.path.join(base_dir, "vector_store")
-    
     for directory in [base_dir, docs_dir, index_dir]:
         os.makedirs(directory, exist_ok=True)
-        
     return base_dir, docs_dir, index_dir
 
-# Configurar SQLite
-
 def load_documents(folder_path: str) -> list[Document]:
-    """Carrega documentos TXT e PDF de uma pasta."""
+    """Carrega documentos TXT e PDF."""
     documents = []
     for file_name in os.listdir(folder_path):
         file_path = os.path.join(folder_path, file_name)
         try:
             if file_name.lower().endswith(".txt"):
-                # Leitura manual para arquivos de texto
                 with open(file_path, 'r', encoding='utf-8') as file:
                     text = file.read()
-                    documents.append(Document(
-                        page_content=text,
-                        metadata={"source": file_path}
-                    ))
+                    documents.append(Document(page_content=text, metadata={"source": file_path}))
             elif file_name.lower().endswith(".pdf"):
                 pdf_reader = PdfReader(file_path)
-                text = "\n".join(page.extract_text() for page in pdf_reader.pages)
-                documents.append(Document(
-                    page_content=text,
-                    metadata={"source": file_path}
-                ))
+                text = "\n".join(page.extract_text() for page in pdf_reader.pages if page.extract_text())
+                documents.append(Document(page_content=text, metadata={"source": file_path}))
         except Exception as e:
             st.warning(f"Erro ao carregar {file_name}: {str(e)}")
     return documents
 
-
 @st.cache_resource
-def create_or_load_vector_store(_embeddings, docs_dir: str, index_dir: str):
-    """Cria ou carrega o índice FAISS no diretório local."""
-    index_file = os.path.join(index_dir, "index.faiss")  # Nome do arquivo de índice
-    try:
-        if os.path.exists(index_file):
-            st.info("Carregando índice FAISS existente...")
-            return FAISS.load_local(index_dir, _embeddings, allow_dangerous_deserialization=True)
-
-        st.info("Criando novo índice FAISS...")
-        documents = load_documents(docs_dir)
-        if not documents:
-            raise RuntimeError("Nenhum documento válido encontrado.")
-
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100)
-        texts = text_splitter.split_documents(documents)
-        vector_store = FAISS.from_documents(texts, _embeddings)
-
-        # Salvar o índice no diretório
-        os.makedirs(index_dir, exist_ok=True)
-        vector_store.save_local(index_dir)  # Salva na pasta, não em um arquivo
-        return vector_store
-    except Exception as e:
-        raise RuntimeError(f"Erro ao criar/carregar o vector store: {str(e)}")
+def create_or_load_vector_store(_embeddings, docs_dir: str, index_dir: str, force_recreate=False):
+    """Cria ou carrega o índice FAISS."""
+    index_file = os.path.join(index_dir, "index.faiss")
+    if os.path.exists(index_file) and not force_recreate:
+        st.info("Carregando índice FAISS existente...")
+        return FAISS.load_local(index_dir, _embeddings, allow_dangerous_deserialization=True)
+    st.info("Criando novo índice FAISS...")
+    documents = load_documents(docs_dir)
+    if not documents:
+        raise RuntimeError("Nenhum documento válido encontrado.")
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100)
+    texts = text_splitter.split_documents(documents)
+    vector_store = FAISS.from_documents(texts, _embeddings)
+    vector_store.save_local(index_dir)
+    return vector_store
 
 def upload_files(uploaded_files, docs_dir: str) -> list[str]:
-    """Salva múltiplos arquivos enviados no diretório de documentos."""
+    """Salva arquivos enviados no diretório."""
     saved_files = []
     for uploaded_file in uploaded_files:
         try:
@@ -141,144 +104,54 @@ def upload_files(uploaded_files, docs_dir: str) -> list[str]:
 
 def main():
     st.title("Chatbot com Dr. Kinho")
-
-    # Configurar diretórios
     base_dir, docs_dir, index_dir = get_app_directories()
-
-    # Obter embeddings
     embeddings = get_embeddings()
 
     with st.sidebar:
-        image_path = Path(__file__).parent / "static" / "images" / "app_header.png"
-        st.image(str(image_path), caption="Dr. Kinho", use_container_width=True)
         st.header("Gerenciamento de Documentos")
-
-        # Upload de documentos
-        uploaded_files = st.file_uploader(
-            "Envie documentos (TXT ou PDF)",
-            type=["txt", "pdf"],
-            accept_multiple_files=True
-        )
-
+        uploaded_files = st.file_uploader("Envie documentos (TXT ou PDF)", type=["txt", "pdf"], accept_multiple_files=True)
         if uploaded_files:
-            with st.spinner("Salvando arquivos..."):
-                saved_files = upload_files(uploaded_files, docs_dir)
-                if saved_files:
-                    st.success(f"Arquivos salvos: {', '.join(saved_files)}")
-                    st.cache_resource.clear()
-                    st.rerun()
-
-        # Listar documentos existentes
-        st.header("Documentos Disponíveis")
+            saved_files = upload_files(uploaded_files, docs_dir)
+            if saved_files:
+                st.success(f"Arquivos enviados: {', '.join(saved_files)}")
+            else:
+                st.warning("Nenhum arquivo foi enviado.")
         files = os.listdir(docs_dir)
-
         if files:
-            file_data = [
-                {
-                    "Arquivo": file,
-                    "Tamanho (KB)": f"{os.path.getsize(os.path.join(docs_dir, file)) / 1024:.1f}"
-                }
-                for file in files
-            ]
-
-            st.dataframe(
-                file_data,
-                hide_index=True,
-                use_container_width=True
-            )
-
-            # Opção para deletar arquivos
-            files_to_delete = st.multiselect("Selecione arquivos para deletar:", files)
-
+            st.header("Documentos Disponíveis")
+            for file in files:
+                st.write(f"- {file}")
+            files_to_delete = st.multiselect("Arquivos para deletar:", files)
             if files_to_delete and st.button("Deletar Selecionados"):
-                with st.spinner("Deletando arquivos..."):
-                    deleted_files = []
-                    for file in files_to_delete:
-                        try:
-                            os.remove(os.path.join(docs_dir, file))
-                            deleted_files.append(file)
-                        except Exception as e:
-                            st.error(f"Erro ao deletar {file}: {e}")
-                    if deleted_files:
-                        st.success(f"Arquivos deletados: {', '.join(deleted_files)}")
-                        st.cache_resource.clear()
-                        st.rerun()
+                for file in files_to_delete:
+                    os.remove(os.path.join(docs_dir, file))
+                st.success(f"Arquivos deletados: {', '.join(files_to_delete)}")
         else:
-            st.info("Nenhum documento carregado.")
-
-        # Recriar índice vetorial
+            st.info("Nenhum documento disponível.")
         if st.button("Recriar Banco de Dados"):
-            with st.spinner("Recriando índice vetorial..."):
-                try:
-                    st.cache_resource.clear()
-                    st.session_state.vector_store = create_or_load_vector_store(
-                        _embeddings=embeddings,
-                        docs_dir=docs_dir,
-                        index_dir=index_dir
-                    )
-                    st.success("Banco de dados recriado com sucesso!")
-                except Exception as e:
-                    st.error(f"Erro ao recriar banco de dados: {e}")
-                st.rerun()
-            st.header("Informações")
-            st.write(f"📁 Base: {base_dir}")
-            st.write(f"📄 Documentos: {docs_dir}")
-            st.write(f"📊 Índices: {index_dir}")
+            if not os.listdir(docs_dir):
+                st.error("Nenhum documento encontrado.")
+            else:
+                st.session_state.vector_store = create_or_load_vector_store(embeddings, docs_dir, index_dir, force_recreate=True)
+                st.success("Banco de dados recriado.")
 
-    # Configurar banco de dados (Chroma)
-    try:
-        if 'vector_store' not in st.session_state:
-            with st.spinner("Configurando banco de dados..."):
-                st.session_state.vector_store = create_or_load_vector_store(
-                    _embeddings=embeddings,
-                    docs_dir=docs_dir,
-                    index_dir=index_dir
-                )
-                st.success("Banco de dados configurado!")
+    if 'vector_store' not in st.session_state:
+        st.session_state.vector_store = create_or_load_vector_store(embeddings, docs_dir, index_dir)
+    retriever = st.session_state.vector_store.as_retriever(search_kwargs={"k": 5})
 
-        # Configurar o retriever para busca
-        retriever = st.session_state.vector_store.as_retriever(search_kwargs={"k": 5})
-
-        # Entrada de perguntas
-        user_question = st.text_input("Faça sua pergunta sobre os documentos:")
-        if user_question:
-            with st.spinner("Processando..."):
-                # Recuperar os documentos relevantes
-                context = retriever.get_relevant_documents(user_question)
-
-                # Configurar o modelo de chat (Groq ou similar)
-                chat_model = ChatGroq(
-                    api_key=GROQ_API_KEY,
-                    model_name="llama-3.2-3b-preview",
-                    temperature=0.4,
-                    max_tokens=1024
-                )
-
-                # Montar mensagens
-                messages = [
-                    ("system", "Você é um assistente que responde com base no contexto fornecido."),
-                    ("user", f"""
-                    Contexto: {' '.join(doc.page_content for doc in context)}
-                    Pergunta: {user_question}
-                    """)
-                ]
-
-                # Obter resposta do modelo
-                response = chat_model.invoke(messages)
-
-                # Exibir resposta e fontes
-                with st.container():
-                    st.markdown("### Resposta:")
-                    st.write(response.content)
-
-                    st.markdown("#### Fontes consultadas:")
-                    sources = set(doc.metadata.get('source', 'Desconhecido') for doc in context)
-                    for source in sources:
-                        st.write(f"- {os.path.basename(source)}")
-
-    except Exception as e:
-        st.error(f"Erro: {str(e)}")
-
+    user_question = st.text_input("Faça sua pergunta:")
+    if user_question:
+        context = retriever.get_relevant_documents(user_question)
+        messages = [
+            ("system", "Você é um assistente que responde com base no contexto fornecido."),
+            ("user", f"Contexto: {' '.join(doc.page_content for doc in context)}\nPergunta: {user_question}")
+        ]
+        response = chat_model.invoke(messages)
+        st.markdown("### Resposta:")
+        st.write(response.content)
+        st.markdown("#### Fontes consultadas:")
+        for doc in context:
+            st.write(f"- {doc.metadata['source']}")
 
 if __name__ == "__main__":
     main()
