@@ -42,13 +42,13 @@ if not os.getenv("GROQ_API_KEY"):
 # Inicializar o modelo Groq
 chat_model = ChatGroq(
     model_name="llama-3.2-3b-preview",
-    temperature=0.4,
+    temperature=0.3,
     max_tokens=512
 )
 
 @st.cache_resource
 def get_embeddings():
-    """Inicializa e retorna o modelo de embeddings usando HuggingFace Inference API."""
+    """Inicializa e retorna o modelo de embeddings usando HuggingFace Embeddings."""
     try:
         # Obtenha a chave de API do Hugging Face do arquivo .env
         hf_api_key = os.getenv("HF_API_KEY")
@@ -56,7 +56,6 @@ def get_embeddings():
             raise ValueError("A chave da API do Hugging Face (HF_API_KEY) não foi encontrada no .env")
 
         return HuggingFaceEmbeddings(
-            api_key=SecretStr(hf_api_key),  # Chave da API
             model_name="sentence-transformers/all-MiniLM-L6-v2",  # Modelo a ser utilizado
         )
     except Exception as e:
