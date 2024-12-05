@@ -92,9 +92,14 @@ def create_or_load_vector_store(_embeddings, docs_dir: str, index_dir: str, forc
 def upload_files(uploaded_files, docs_dir: str) -> list[str]:
     """Salva arquivos enviados no diretório."""
     saved_files = []
+    # Adicionar print para debug
+    st.write(f"Diretório de destino: {docs_dir}")
+    print(f"Diretório de destino: {docs_dir}")  # Print no console
+    
     for uploaded_file in uploaded_files:
         try:
             file_path = os.path.join(docs_dir, uploaded_file.name)
+            st.write(f"Salvando arquivo em: {file_path}")  # Mostrar no Streamlit
             with open(file_path, "wb") as f:
                 f.write(uploaded_file.getbuffer())
             saved_files.append(uploaded_file.name)
