@@ -9,7 +9,6 @@ from PyPDF2 import PdfReader
 from pathlib import Path
 import warnings
 from groq import Groq
-import streamlit as st
 
 GROQ_API_KEY = st.secrets["api_keys"]["groq_api_key"]
 HF_API_KEY = st.secrets["api_keys"]["hf_api_key"]
@@ -93,8 +92,6 @@ def upload_files(uploaded_files, docs_dir: str) -> list[str]:
     return saved_files
 
 def main():
-  
-
     st.title("Chatbot do internato em UTI")
     base_dir, docs_dir, index_dir = get_app_directories()
     embeddings = get_embeddings()
