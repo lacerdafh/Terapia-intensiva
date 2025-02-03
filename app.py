@@ -7,20 +7,12 @@ from langchain_huggingface.embeddings import HuggingFaceEmbeddings
 from langchain_groq import ChatGroq
 from PyPDF2 import PdfReader
 from pathlib import Path
-import tomllib
 import warnings
 
 # Suprimir avisos
 warnings.filterwarnings('ignore')
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
-
-# Carregar configurações do arquivo config.toml
-with open("config.toml", "rb") as f:
-    config = tomllib.load(f)
-
-os.environ["GROQ_API_KEY"] = config["api_keys"]["groq_api_key"]
-os.environ["HF_API_KEY"] = config["api_keys"]["hf_api_key"]
 
 # Inicializar modelo de chat Groq
 chat_model = ChatGroq(
@@ -38,8 +30,8 @@ def get_embeddings():
 
 def get_app_directories() -> tuple[str, str, str]:
     """Configura diretórios para documentos e índices."""
-    base_dir = os.path.expanduser(r"D:\6-projetos\8-ChatbotUTI\Terapia-intensiva\assets")
-    docs_dir = os.path.join(base_dir)
+    base_dir = os.path.join(os.getcwd(), "assets")
+    docs_dir = os.path.join(base_dir, "documents")
     index_dir = os.path.join(base_dir, "vector_store")
     for directory in [base_dir, docs_dir, index_dir]:
         os.makedirs(directory, exist_ok=True)
@@ -96,12 +88,17 @@ def upload_files(uploaded_files, docs_dir: str) -> list[str]:
     return saved_files
 
 def main():
+    import streamlit as st
+
+    GROQ_API_KEY = st.secrets["api_keys"]["groq_api_key"]
+    HF_API_KEY = st.secrets["api_keys"]["hf_api_key"]
+
     st.title("Chatbot do internato em UTI")
     base_dir, docs_dir, index_dir = get_app_directories()
     embeddings = get_embeddings()
 
     with st.sidebar:
-        st.image("D:/6-projetos/8-ChatbotUTI/Terapia-intensiva/static/images/app_header.png", use_container_width=True)
+        st.image("static/images/app_header.png", use_container_width=True)
         st.header("Trabalhos em Discussão")
         st.text("""
         1- Daily laxative therapy reduces organ dysfunction in mechanically ventilated patients.

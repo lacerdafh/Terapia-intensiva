@@ -1,42 +1,10 @@
-# Ambiente Virtual
-Chatbot/
-venv/
-env/
-.env
-.toml
+# Ignorar credenciais e segredos
+.streamlit/secrets.toml
 
-# Cache Python
-__pycache__/
-*.py[cod]
-*.so
-.Python
+# Ignorar arquivos temporários do sistema
 *.pyc
-.pytest_cache/
+__pycache__/
 
-# Diretórios de dados
-~/chatbot_documents/
-data/
-vector_store/
-uploaded_files/
-
-# VS Code
-.vscode/
-*.code-workspace
-
-# PyCharm
-.idea/
-
-# Logs e bancos de dados
+# Ignorar logs e arquivos temporários
+logs/
 *.log
-*.sqlite
-*.db
-
-# Sistema
-.DS_Store
-Thumbs.db
-desktop.ini
-
-# Arquivos temporários
-*.tmp
-*.bak
-*.swp
