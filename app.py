@@ -8,6 +8,11 @@ from langchain_groq import ChatGroq
 from PyPDF2 import PdfReader
 from pathlib import Path
 import warnings
+from groq import Groq
+import streamlit as st
+
+GROQ_API_KEY = st.secrets["api_keys"]["groq_api_key"]
+HF_API_KEY = st.secrets["api_keys"]["hf_api_key"]
 
 # Suprimir avisos
 warnings.filterwarnings('ignore')
@@ -17,7 +22,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 # Inicializar modelo de chat Groq
 chat_model = ChatGroq(
     model_name="llama-3.2-3b-preview",
-    temperature=0.3,
+    temperature=0.1,
     max_tokens=512
 )
 
@@ -88,10 +93,7 @@ def upload_files(uploaded_files, docs_dir: str) -> list[str]:
     return saved_files
 
 def main():
-    import streamlit as st
-
-    GROQ_API_KEY = st.secrets["api_keys"]["groq_api_key"]
-    HF_API_KEY = st.secrets["api_keys"]["hf_api_key"]
+  
 
     st.title("Chatbot do internato em UTI")
     base_dir, docs_dir, index_dir = get_app_directories()
