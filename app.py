@@ -19,7 +19,7 @@ os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 # Inicializar modelo de chat Groq
-chat_model = ChatGroq(
+chat_model = Groq(
     model_name="llama-3.2-3b-preview",
     temperature=0.1,
     max_tokens=512
