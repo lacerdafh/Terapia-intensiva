@@ -20,7 +20,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 # Inicializar modelo de chat Groq
 chat_model = ChatGroq(
-    model_name="llama-3.2-3b-preview",
+    model="llama-3.2-3b-preview",
     temperature=0.1,
     max_tokens=512
 )
