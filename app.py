@@ -47,8 +47,8 @@ def get_embeddings():
 
 def get_app_directories() -> tuple[str, str, str]:
     """Configura diretórios para documentos e índices."""
-    base_dir = os.path.expanduser("~/chatbot_documents")
-    docs_dir = os.path.join(base_dir, "documents")
+    base_dir = os.path.expanduser(r"D:\6-projetos\8-ChatbotUTI\Terapia-intensiva\assets")
+    docs_dir = os.path.join(base_dir)
     index_dir = os.path.join(base_dir, "vector_store")
     for directory in [base_dir, docs_dir, index_dir]:
         os.makedirs(directory, exist_ok=True)
@@ -108,37 +108,27 @@ def upload_files(uploaded_files, docs_dir: str) -> list[str]:
     return saved_files
 
 def main():
-    st.title("Chatbot com Dr. Kinho")
+    st.title("Chatbot do internato em UTI")
     base_dir, docs_dir, index_dir = get_app_directories()
     embeddings = get_embeddings()
 
     with st.sidebar:
-        st.header("Gerenciamento de Documentos")
-        uploaded_files = st.file_uploader("Envie documentos (TXT ou PDF)", type=["txt", "pdf"], accept_multiple_files=True)
-        if uploaded_files:
-            saved_files = upload_files(uploaded_files, docs_dir)
-            if saved_files:
-                st.success(f"Arquivos enviados: {', '.join(saved_files)}")
-            else:
-                st.warning("Nenhum arquivo foi enviado.")
-        files = os.listdir(docs_dir)
-        if files:
-            st.header("Documentos Disponíveis")
-            for file in files:
-                st.write(f"- {file}")
-            files_to_delete = st.multiselect("Arquivos para deletar:", files)
-            if files_to_delete and st.button("Deletar Selecionados"):
-                for file in files_to_delete:
-                    os.remove(os.path.join(docs_dir, file))
-                st.success(f"Arquivos deletados: {', '.join(files_to_delete)}")
-        else:
-            st.info("Nenhum documento disponível.")
-        if st.button("Recriar Banco de Dados"):
-            if not os.listdir(docs_dir):
-                st.error("Nenhum documento encontrado.")
-            else:
-                st.session_state.vector_store = create_or_load_vector_store(embeddings, docs_dir, index_dir, force_recreate=True)
-                st.success("Banco de dados recriado.")
+        st.image("D:/6-projetos/8-ChatbotUTI/Terapia-intensiva/static/images/app_header.png", use_container_width=True)
+        
+
+         # Espaço para os títulos dos trabalhos
+        st.header("Trabalhos em Discussão")
+        st.text('''1- Daily laxative therapy reduces organ dysfunction in mechanically ventilated patients: a phase II randomized controlled trial                                      patients: a phase II randomized controlled trial''')
+        st.text(''' 2- Evaluation of simplified acute physiology score 3 performance: a systematic review of external validation studies ''')
+
+        # Pequena explicação sobre o chatbot
+        st.markdown("""
+        **Como funciona este chatbot?**
+        
+        - Os documentos carregados são processados e indexados para busca eficiente.  
+        - Quando uma pergunta é feita, o chatbot busca informações relevantes nos documentos e gera uma resposta.  
+        - Ele usa inteligência artificial para interpretar perguntas e encontrar os melhores trechos como base de resposta.  
+        """)
 
     if 'vector_store' not in st.session_state:
         st.session_state.vector_store = create_or_load_vector_store(embeddings, docs_dir, index_dir)
@@ -154,9 +144,7 @@ def main():
         response = chat_model.invoke(messages)
         st.markdown("### Resposta:")
         st.write(response.content)
-        st.markdown("#### Fontes consultadas:")
-        for doc in context:
-            st.write(f"- {doc.metadata['source']}")
+      
 
 if __name__ == "__main__":
     main()

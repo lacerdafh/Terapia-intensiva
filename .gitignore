@@ -3,6 +3,7 @@ Chatbot/
 venv/
 env/
 .env
+.toml
 
 # Cache Python
 __pycache__/
