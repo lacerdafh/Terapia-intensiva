@@ -6,7 +6,6 @@ from langchain.schema import Document
 from langchain_huggingface.embeddings import HuggingFaceEmbeddings
 from langchain_groq import ChatGroq
 from PyPDF2 import PdfReader
-from dotenv import load_dotenv
 from pathlib import Path
 import tomllib
 import warnings
@@ -23,11 +22,6 @@ with open("config.toml", "rb") as f:
 os.environ["GROQ_API_KEY"] = config["api_keys"]["groq_api_key"]
 os.environ["HF_API_KEY"] = config["api_keys"]["hf_api_key"]
 
-load_dotenv()
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-if not GROQ_API_KEY:
-    raise ValueError("GROQ_API_KEY não encontrada no arquivo .env")
-
 # Inicializar modelo de chat Groq
 chat_model = ChatGroq(
     model_name="llama-3.2-3b-preview",
@@ -38,9 +32,6 @@ chat_model = ChatGroq(
 @st.cache_resource
 def get_embeddings():
     """Inicializa e retorna o modelo de embeddings."""
-    hf_api_key = os.getenv("HF_API_KEY")
-    if not hf_api_key:
-        raise ValueError("HF_API_KEY não encontrada no arquivo .env")
     return HuggingFaceEmbeddings(
         model_name="sentence-transformers/all-MiniLM-L6-v2"
     )
@@ -92,14 +83,11 @@ def create_or_load_vector_store(_embeddings, docs_dir: str, index_dir: str, forc
 def upload_files(uploaded_files, docs_dir: str) -> list[str]:
     """Salva arquivos enviados no diretório."""
     saved_files = []
-    # Adicionar print para debug
     st.write(f"Diretório de destino: {docs_dir}")
-    print(f"Diretório de destino: {docs_dir}")  # Print no console
-    
     for uploaded_file in uploaded_files:
         try:
             file_path = os.path.join(docs_dir, uploaded_file.name)
-            st.write(f"Salvando arquivo em: {file_path}")  # Mostrar no Streamlit
+            st.write(f"Salvando arquivo em: {file_path}")
             with open(file_path, "wb") as f:
                 f.write(uploaded_file.getbuffer())
             saved_files.append(uploaded_file.name)
@@ -114,20 +102,16 @@ def main():
 
     with st.sidebar:
         st.image("D:/6-projetos/8-ChatbotUTI/Terapia-intensiva/static/images/app_header.png", use_container_width=True)
-        
-
-         # Espaço para os títulos dos trabalhos
         st.header("Trabalhos em Discussão")
-        st.text('''1- Daily laxative therapy reduces organ dysfunction in mechanically ventilated patients: a phase II randomized controlled trial                                      patients: a phase II randomized controlled trial''')
-        st.text(''' 2- Evaluation of simplified acute physiology score 3 performance: a systematic review of external validation studies ''')
-
-        # Pequena explicação sobre o chatbot
+        st.text("""
+        1- Daily laxative therapy reduces organ dysfunction in mechanically ventilated patients.
+        2- Evaluation of simplified acute physiology score 3 performance.
+        """)
         st.markdown("""
         **Como funciona este chatbot?**
-        
         - Os documentos carregados são processados e indexados para busca eficiente.  
-        - Quando uma pergunta é feita, o chatbot busca informações relevantes nos documentos e gera uma resposta.  
-        - Ele usa inteligência artificial para interpretar perguntas e encontrar os melhores trechos como base de resposta.  
+        - Quando uma pergunta é feita, o chatbot busca informações relevantes nos documentos.  
+        - Ele usa inteligência artificial para encontrar os melhores trechos como base de resposta.  
         """)
 
     if 'vector_store' not in st.session_state:
@@ -144,7 +128,6 @@ def main():
         response = chat_model.invoke(messages)
         st.markdown("### Resposta:")
         st.write(response.content)
-      
 
 if __name__ == "__main__":
     main()
