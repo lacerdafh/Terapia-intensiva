@@ -10,8 +10,8 @@ from pathlib import Path
 import warnings
 from groq import Groq
 
-GROQ_API_KEY = st.secrets["groq_api_key"]
-HF_API_KEY = st.secrets["hf_api_key"]
+GROQ_API_KEY = st.secrets["api_key"]["groq_api_key"]
+HF_API_KEY = st.secrets["api_key"]["hf_api_key"]
 
 # Suprimir avisos
 warnings.filterwarnings('ignore')
